@@ -132,9 +132,183 @@ adonis(cts ~ Timepoint + Supp_Status, data = df2, permutations = perm, method = 
 #Time point seems to matter here, but not supplement status or the interaction of supplement and time,
 #mother, infant, or country.  So, is batch confounded??? NICK NOTE: Talk with Audrey
 
+# Create object just with Pakistan. All underlying data are subsetted
+# By default, any OTUs with zero sequences in resulting object are shifted to "Other" category.
+attach(alltaxa$meta)
+alltaxa_Pakistan = otu.subset_libs(alltaxa, mask = (SiteLocation == "Pakistan"))  
+otu.summary(alltaxa_Pakistan)
+alltaxa_Pakistan$meta  # access to metadata for HUU
+meta_Pakistan = alltaxa_Pakistan$meta #creating new variable may be more convenient
+detach(alltaxa$meta)
+
+#Create a variable for supplement status:
+
+meta_Pakistan$Supp_Status <- 0
+
+for (i in 1:length(meta_Pakistan$Lib)) {
+  if (meta_Pakistan$Timepoint[i] == "12Weeks" & meta_Pakistan$Arm[i] == 1) {
+    meta_Pakistan$Supp_Status[i] <- 1
+  }
+  if (meta_Pakistan$Timepoint[i] == "34Weeks" & meta_Pakistan$Arm[i] != 3) {
+    meta_Pakistan$Supp_Status[i] <- 1
+  }
+}
+
+#********************* biodiversity *******************
+
+#Check Goods coverage index:  
+min(meta_Pakistan[meta_Pakistan$Timepoint == "12Weeks" | meta_Pakistan$Timepoint == "34Weeks",]$Goods_3700Seqs, na.rm = TRUE)
+#all are above 0.99, so great depth of sequencing coverage!
+
+#Test for differences in common alpha diversity indices
+summary(aov(Sobs_3700Seqs ~ Timepoint, data = meta_Pakistan[meta_Pakistan$Timepoint == "12Weeks" | meta_Pakistan$Timepoint == "34Weeks",])) #Not Significant!
+summary(aov(Chao1_3700Seqs ~ Timepoint, data = meta_Pakistan[meta_Pakistan$Timepoint == "12Weeks" | meta_Pakistan$Timepoint == "34Weeks",])) #Not significnat!
+summary(aov(ShannonE_3700Seqs ~ Timepoint, data = meta_Pakistan[meta_Pakistan$Timepoint == "12Weeks" | meta_Pakistan$Timepoint == "34Weeks",])) #Looks significant!
+summary(aov(ShannonH_3700Seqs ~ Timepoint, data = meta_Pakistan[meta_Pakistan$Timepoint == "12Weeks" | meta_Pakistan$Timepoint == "34Weeks",])) #Looks significant!
+
+summary(aov(Sobs_3700Seqs ~ Timepoint * Supp_Status, data = meta_Pakistan[meta_Pakistan$Timepoint == "12Weeks" | meta_Pakistan$Timepoint == "34Weeks",])) #Interaction is NOT significant
+summary(aov(Chao1_3700Seqs ~ Timepoint * Supp_Status, data = meta_Pakistan[meta_Pakistan$Timepoint == "12Weeks" | meta_Pakistan$Timepoint == "34Weeks",])) #Interaction is NOT significant
+summary(aov(ShannonE_3700Seqs ~ Timepoint * Supp_Status, data = meta_Pakistan[meta_Pakistan$Timepoint == "12Weeks" | meta_Pakistan$Timepoint == "34Weeks",])) #Interaction is NOT significant
+summary(aov(ShannonH_3700Seqs ~ Timepoint * Supp_Status, data = meta_Pakistan[meta_Pakistan$Timepoint == "12Weeks" | meta_Pakistan$Timepoint == "34Weeks",])) #Interaction is NOT significant
+
+#Plot indices: nice way to understand ANOVAS from above
+par(mfrow=c(1,3))
+boxplot(Chao1_3700Seqs ~ Timepoint * Supp_Status, data = meta_Pakistan[meta_Pakistan$Timepoint == "12Weeks" | meta_Pakistan$Timepoint == "34Weeks",], main="Richness\nPakistan", ylab="Chao1")
+boxplot(ShannonE_3700Seqs ~ Timepoint * Supp_Status, data = meta_Pakistan[meta_Pakistan$Timepoint == "12Weeks" | meta_Pakistan$Timepoint == "34Weeks",], main="Evenness\nPakistan", ylab="H/Hmax")
+boxplot(ShannonH_3700Seqs ~ Timepoint * Supp_Status, data = meta_Pakistan[meta_Pakistan$Timepoint == "12Weeks" | meta_Pakistan$Timepoint == "34Weeks",], main="Diversity\nPakistan", ylab="H")
+
+counts <- as.data.frame(alltaxa$cts)
+counts$Lib <- rownames(counts)
+
+df <- merge(meta_Pakistan, counts, by = "Lib")
+df2 <- df[df$Timepoint == "12Weeks" | df$Timepoint == "34Weeks",]
+cts <- df2[,22:231]
+
+dim(df2) #160 observations
+length(unique(df2$SubjectID)) #105 women total
+length((df2[df2$Timepoint == '12Weeks',1])) #63 women at 12 weeks
+length(unique(df2[df2$Timepoint == '34Weeks',1])) #97 women at 34 weeks
+#******************* Beta-diversity tests:  Adonis ***************************
 perm = 1000
-# Pairwise tests for all 8 groups defined by SiteLocation x Mother_Infant NICK NOTE: Does not account for Batch!
-otu.mul_adonis(alltaxa, as.factor(paste(SiteLocation,Mother_Infant, sep="-")), permutations = perm, method = "bray")
+adonis(cts ~ Timepoint*Supp_Status, data = df2, permutations = perm, method = "bray", strata = df2$SubjectID)
+adonis(cts ~ Timepoint + Supp_Status, data = df2, permutations = perm, method = "bray", strata = df2$SubjectID)
 
 
+# Create object just with DRC. All underlying data are subsetted
+# By default, any OTUs with zero sequences in resulting object are shifted to "Other" category.
+attach(alltaxa$meta)
+alltaxa_DRC = otu.subset_libs(alltaxa, mask = (SiteLocation == "DRC"))  
+otu.summary(alltaxa_DRC)
+alltaxa_DRC$meta  # access to metadata for HUU
+meta_DRC = alltaxa_DRC$meta #creating new variable may be more convenient
+detach(alltaxa$meta)
 
+#Create a variable for supplement status:
+
+meta_DRC$Supp_Status <- 0
+
+for (i in 1:length(meta_DRC$Lib)) {
+  if (meta_DRC$Timepoint[i] == "12Weeks" & meta_DRC$Arm[i] == 1) {
+    meta_DRC$Supp_Status[i] <- 1
+  }
+  if (meta_DRC$Timepoint[i] == "34Weeks" & meta_DRC$Arm[i] != 3) {
+    meta_DRC$Supp_Status[i] <- 1
+  }
+}
+
+#********************* biodiversity *******************
+
+#Check Goods coverage index:  
+min(meta_DRC[meta_DRC$Timepoint == "12Weeks" | meta_DRC$Timepoint == "34Weeks",]$Goods_3700Seqs, na.rm = TRUE)
+#all are above 0.99, so great depth of sequencing coverage!
+
+#Test for differences in common alpha diversity indices
+summary(aov(Sobs_3700Seqs ~ Timepoint, data = meta_DRC[meta_DRC$Timepoint == "12Weeks" | meta_DRC$Timepoint == "34Weeks",])) #Not Significant!
+summary(aov(Chao1_3700Seqs ~ Timepoint, data = meta_DRC[meta_DRC$Timepoint == "12Weeks" | meta_DRC$Timepoint == "34Weeks",])) #Not significnat!
+summary(aov(ShannonE_3700Seqs ~ Timepoint, data = meta_DRC[meta_DRC$Timepoint == "12Weeks" | meta_DRC$Timepoint == "34Weeks",])) #Not significant!
+summary(aov(ShannonH_3700Seqs ~ Timepoint, data = meta_DRC[meta_DRC$Timepoint == "12Weeks" | meta_DRC$Timepoint == "34Weeks",])) #Not significant!
+
+summary(aov(Sobs_3700Seqs ~ Timepoint * Supp_Status, data = meta_DRC[meta_DRC$Timepoint == "12Weeks" | meta_DRC$Timepoint == "34Weeks",])) #Interaction is NOT significant
+summary(aov(Chao1_3700Seqs ~ Timepoint * Supp_Status, data = meta_DRC[meta_DRC$Timepoint == "12Weeks" | meta_DRC$Timepoint == "34Weeks",])) #Interaction is NOT significant
+summary(aov(ShannonE_3700Seqs ~ Timepoint * Supp_Status, data = meta_DRC[meta_DRC$Timepoint == "12Weeks" | meta_DRC$Timepoint == "34Weeks",])) #Interaction is NOT significant
+summary(aov(ShannonH_3700Seqs ~ Timepoint * Supp_Status, data = meta_DRC[meta_DRC$Timepoint == "12Weeks" | meta_DRC$Timepoint == "34Weeks",])) #Interaction is NOT significant
+
+#Plot indices: nice way to understand ANOVAS from above
+par(mfrow=c(1,3))
+boxplot(Chao1_3700Seqs ~ Timepoint * Supp_Status, data = meta_DRC[meta_DRC$Timepoint == "12Weeks" | meta_DRC$Timepoint == "34Weeks",], main="Richness\nDRC", ylab="Chao1")
+boxplot(ShannonE_3700Seqs ~ Timepoint * Supp_Status, data = meta_DRC[meta_DRC$Timepoint == "12Weeks" | meta_DRC$Timepoint == "34Weeks",], main="Evenness\nDRC", ylab="H/Hmax")
+boxplot(ShannonH_3700Seqs ~ Timepoint * Supp_Status, data = meta_DRC[meta_DRC$Timepoint == "12Weeks" | meta_DRC$Timepoint == "34Weeks",], main="Diversity\nDRC", ylab="H")
+
+counts <- as.data.frame(alltaxa$cts)
+counts$Lib <- rownames(counts)
+
+df <- merge(meta_DRC, counts, by = "Lib")
+df2 <- df[df$Timepoint == "12Weeks" | df$Timepoint == "34Weeks",]
+cts <- df2[,22:231]
+
+dim(df2) #233 observations
+length(unique(df2$SubjectID)) #157 women total
+length((df2[df2$Timepoint == '12Weeks',1])) #91 women at 12 weeks
+length(unique(df2[df2$Timepoint == '34Weeks',1])) #142 women at 34 weeks
+#******************* Beta-diversity tests:  Adonis ***************************
+perm = 1000
+adonis(cts ~ Timepoint*Supp_Status, data = df2, permutations = perm, method = "bray", strata = df2$SubjectID)
+adonis(cts ~ Timepoint + Supp_Status, data = df2, permutations = perm, method = "bray", strata = df2$SubjectID)
+
+# Create object just with India. All underlying data are subsetted
+# By default, any OTUs with zero sequences in resulting object are shifted to "Other" category.
+attach(alltaxa$meta)
+alltaxa_India = otu.subset_libs(alltaxa, mask = (SiteLocation == "India"))  
+otu.summary(alltaxa_India)
+alltaxa_India$meta  # access to metadata for HUU
+meta_India = alltaxa_India$meta #creating new variable may be more convenient
+detach(alltaxa$meta)
+
+#Create a variable for supplement status:
+
+meta_India$Supp_Status <- 0
+
+for (i in 1:length(meta_India$Lib)) {
+  if (meta_India$Timepoint[i] == "12Weeks" & meta_India$Arm[i] == 1) {
+    meta_India$Supp_Status[i] <- 1
+  }
+  if (meta_India$Timepoint[i] == "34Weeks" & meta_India$Arm[i] != 3) {
+    meta_India$Supp_Status[i] <- 1
+  }
+}
+
+#********************* biodiversity *******************
+
+#Check Goods coverage index:  
+min(meta_India[meta_India$Timepoint == "12Weeks" | meta_India$Timepoint == "34Weeks",]$Goods_3700Seqs, na.rm = TRUE)
+#all are above 0.99, so great depth of sequencing coverage!
+
+#Test for differences in common alpha diversity indices
+summary(aov(Sobs_3700Seqs ~ Timepoint, data = meta_India[meta_India$Timepoint == "12Weeks" | meta_India$Timepoint == "34Weeks",])) #Not Significant!
+summary(aov(Chao1_3700Seqs ~ Timepoint, data = meta_India[meta_India$Timepoint == "12Weeks" | meta_India$Timepoint == "34Weeks",])) #Not significnat!
+summary(aov(ShannonE_3700Seqs ~ Timepoint, data = meta_India[meta_India$Timepoint == "12Weeks" | meta_India$Timepoint == "34Weeks",])) #Not significant!
+summary(aov(ShannonH_3700Seqs ~ Timepoint, data = meta_India[meta_India$Timepoint == "12Weeks" | meta_India$Timepoint == "34Weeks",])) #Not significant!
+
+##No interaction model for India because no one is on the supplement at 12 weeks in this data.
+
+#Plot indices: nice way to understand ANOVAS from above
+par(mfrow=c(1,3))
+boxplot(Chao1_3700Seqs ~ Timepoint + Supp_Status, data = meta_India[meta_India$Timepoint == "12Weeks" | meta_India$Timepoint == "34Weeks",], main="Richness\nIndia", ylab="Chao1")
+boxplot(ShannonE_3700Seqs ~ Timepoint + Supp_Status, data = meta_India[meta_India$Timepoint == "12Weeks" | meta_India$Timepoint == "34Weeks",], main="Evenness\nIndia", ylab="H/Hmax")
+boxplot(ShannonH_3700Seqs ~ Timepoint + Supp_Status, data = meta_India[meta_India$Timepoint == "12Weeks" | meta_India$Timepoint == "34Weeks",], main="Diversity\nIndia", ylab="H")
+
+counts <- as.data.frame(alltaxa$cts)
+counts$Lib <- rownames(counts)
+
+df <- merge(meta_India, counts, by = "Lib")
+df2 <- df[df$Timepoint == "12Weeks" | df$Timepoint == "34Weeks",]
+cts <- df2[,22:231]
+
+dim(df2) #191 observations
+length(unique(df2$SubjectID)) #102 women total
+length((df2[df2$Timepoint == '12Weeks',1])) #97 women at 12 weeks
+length(unique(df2[df2$Timepoint == '34Weeks',1])) #94 women at 34 weeks
+#******************* Beta-diversity tests:  Adonis ***************************
+perm = 1000
+adonis(cts ~ Timepoint*Supp_Status, data = df2, permutations = perm, method = "bray", strata = df2$SubjectID)
+adonis(cts ~ Timepoint + Supp_Status, data = df2, permutations = perm, method = "bray", strata = df2$SubjectID)
