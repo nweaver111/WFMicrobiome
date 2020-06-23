@@ -46,14 +46,14 @@ phylum = otu.sort_otus(phylum, method = "ra_desc")
 attach(alltaxa$meta)
 
 #********************* Utilities *******************
-otu.summary(alltaxa) # description of alltaxa object
-otu.notu(alltaxa)    # number of OTUs in object
-otu.nsubj(alltaxa)   # number of subjects/libraries in object
-otu.dim(alltaxa)     # number of OTUs and subjects/libraries in object
+otu.summary(alltaxa) # description of alltaxa object: n = 2750, OTUs = 210
+otu.notu(alltaxa)    # number of OTUs in object: 210
+otu.nsubj(alltaxa)   # number of subjects/libraries in object: 2750
+otu.dim(alltaxa)     # number of OTUs and subjects/libraries in object: 2750 X 210
 otu.subj_names(alltaxa) # return vector of subject/library names
 
 otu.plot_counts(alltaxa) # histogram of read counts for all libraries
-otu.plot_counts(alltaxa, mask = (SiteLocation == "India")) # histogram of read counts for India mice only
+otu.plot_counts(alltaxa, mask = (SiteLocation == "India")) # histogram of read counts for India only
 
 otu.summarize_read_cts(alltaxa)  # Descriptive stats of read counts across all subjects/libraries
 otu.summarize_read_cts(alltaxa, factor = SiteLocation) # Descriptive stats of read counts by SiteLocation
@@ -71,92 +71,65 @@ alltaxa$nms   # OTU names
 alltaxa$phynms  # Phylum names
 alltaxa$orignms # Full taxonomy name
 
-# Create object just with India's. All underlying data are subsetted
+# Create object just with Guatemala's. All underlying data are subsetted
 # By default, any OTUs with zero sequences in resulting object are shifted to "Other" category.
-alltaxa_India = otu.subset_libs(alltaxa, mask = (SiteLocation == "India"))  
-otu.summary(alltaxa_India)
-alltaxa_India$meta  # access to metadata for HUU
-meta_India = alltaxa_India$meta #creating new variable may be more convenient
+alltaxa_Guatemala = otu.subset_libs(alltaxa, mask = (SiteLocation == "Guatemala"))  
+otu.summary(alltaxa_Guatemala)
+alltaxa_Guatemala$meta  # access to metadata for HUU
+meta_Guatemala = alltaxa_Guatemala$meta #creating new variable may be more convenient
+detach(alltaxa$meta)
 
-# Subset OTU table to INCLUDE only taxa belonging to Firmicutes (all other taxa go into "Other" bin)
-alltaxa_firmicutes = otu.include_otunames(alltaxa, c("Firmicutes"))
-otu.summary(alltaxa_firmicutes)
-alltaxa_firmicutes$orignms
+#Create a variable for supplement status:
 
-#NICK NOTE: Not sure why we focus on Firmicutes; is it just an example or necessary?
+meta_Guatemala$Supp_Status <- 0
 
-# Subset OTU table to EXCLUDE Firmicutes (all other taxa go into "Other" bin)
-alltaxa_no_firmicutes = otu.exclude_otunames(alltaxa, c("Firmicutes"))
-otu.summary(alltaxa_no_firmicutes)
-alltaxa_no_firmicutes$orignms
+for (i in 1:length(meta_Guatemala$Lib)) {
+  if (meta_Guatemala$Timepoint[i] == "12Weeks" & meta_Guatemala$Arm[i] == 1) {
+    meta_Guatemala$Supp_Status[i] <- 1
+  }
+  if (meta_Guatemala$Timepoint[i] == "34Weeks" & meta_Guatemala$Arm[i] != 3) {
+    meta_Guatemala$Supp_Status[i] <- 1
+  }
+}
 
 #********************* biodiversity *******************
 
-#Check Goods coverage index:  all are above 0.99, so great depth of sequencing coverage
-min(Goods_3700Seqs, na.rm = TRUE)
+#Check Goods coverage index:  
+min(meta_Guatemala[meta_Guatemala$Timepoint == "12Weeks" | meta_Guatemala$Timepoint == "34Weeks",]$Goods_3700Seqs, na.rm = TRUE)
+#all are above 0.99, so great depth of sequencing coverage!
 
 #Test for differences in common alpha diversity indices
-summary(aov(Sobs_3700Seqs ~ SiteLocation)) #Looks significant!
-summary(aov(Chao1_3700Seqs ~ SiteLocation)) #Looks significnat!
-summary(aov(ShannonE_3700Seqs ~ SiteLocation)) #not significant
-summary(aov(ShannonH_3700Seqs ~ SiteLocation)) #not significant
+summary(aov(Sobs_3700Seqs ~ Timepoint, data = meta_Guatemala[meta_Guatemala$Timepoint == "12Weeks" | meta_Guatemala$Timepoint == "34Weeks",])) #Not Significant!
+summary(aov(Chao1_3700Seqs ~ Timepoint, data = meta_Guatemala[meta_Guatemala$Timepoint == "12Weeks" | meta_Guatemala$Timepoint == "34Weeks",])) #Not significnat!
+summary(aov(ShannonE_3700Seqs ~ Timepoint, data = meta_Guatemala[meta_Guatemala$Timepoint == "12Weeks" | meta_Guatemala$Timepoint == "34Weeks",])) #Looks significant!
+summary(aov(ShannonH_3700Seqs ~ Timepoint, data = meta_Guatemala[meta_Guatemala$Timepoint == "12Weeks" | meta_Guatemala$Timepoint == "34Weeks",])) #Looks significant!
 
-summary(aov(Sobs_3700Seqs ~ SiteLocation * Mother_Infant)) #all significant again
-summary(aov(Chao1_3700Seqs ~ SiteLocation * Mother_Infant)) #all significant again
-summary(aov(ShannonE_3700Seqs ~ SiteLocation * Mother_Infant)) #interaction significant
-summary(aov(ShannonH_3700Seqs ~ SiteLocation * Mother_Infant)) #interaction significant
+summary(aov(Sobs_3700Seqs ~ Timepoint * Supp_Status, data = meta_Guatemala[meta_Guatemala$Timepoint == "12Weeks" | meta_Guatemala$Timepoint == "34Weeks",])) #Interaction is significant
+summary(aov(Chao1_3700Seqs ~ Timepoint * Supp_Status, data = meta_Guatemala[meta_Guatemala$Timepoint == "12Weeks" | meta_Guatemala$Timepoint == "34Weeks",])) #Interaction is significant
+summary(aov(ShannonE_3700Seqs ~ Timepoint * Supp_Status, data = meta_Guatemala[meta_Guatemala$Timepoint == "12Weeks" | meta_Guatemala$Timepoint == "34Weeks",])) #Interaction is NOT significant
+summary(aov(ShannonH_3700Seqs ~ Timepoint * Supp_Status, data = meta_Guatemala[meta_Guatemala$Timepoint == "12Weeks" | meta_Guatemala$Timepoint == "34Weeks",])) #Interaction is NOT significant
 
 #Plot indices: nice way to understand ANOVAS from above
-par(mfrow=c(3,3))
-boxplot(Chao1_3700Seqs ~ Timepoint, data = df2[df2$SiteLocation == "Guatemala",], main="Richness\nGuatemala", ylab="Chao1")
-boxplot(Chao1_3700Seqs ~ Timepoint * Supp_Status, data = df2[df2$SiteLocation == "Pakistan",], main="Richness\nPakistan", ylab="Chao1")
-boxplot(Chao1_3700Seqs ~ Timepoint * Supp_Status, data = df2[df2$SiteLocation == "DRC",], main="Richness\nDRC", ylab="Chao1")
-boxplot(ShannonE_3700Seqs ~ Timepoint * Supp_Status, data = df2[df2$SiteLocation == "Guatemala", ], main="Evenness\nGuatemala", ylab="H/Hmax")
-boxplot(ShannonE_3700Seqs ~ Timepoint * Supp_Status, data = df2[df2$SiteLocation == "Pakistan", ], main="Evenness\nPakistan", ylab="H/Hmax")
-boxplot(ShannonE_3700Seqs ~ Timepoint * Supp_Status, data = df2[df2$SiteLocation == "DRC", ], main="Evenness\nDRC", ylab="H/Hmax")
-boxplot(ShannonH_3700Seqs ~ Timepoint * Supp_Status, data = df2[df2$SiteLocation == "Guatemala",], main="Diversity\nGuatemala", ylab="H")
-boxplot(ShannonH_3700Seqs ~ Timepoint * Supp_Status, data = df2[df2$SiteLocation == "Pakistan",], main="Diversity\nPakistan", ylab="H")
-boxplot(ShannonH_3700Seqs ~ Timepoint * Supp_Status, data = df2[df2$SiteLocation == "DRC",], main="Diversity\nDRC", ylab="H")
+par(mfrow=c(1,3))
+boxplot(Chao1_3700Seqs ~ Timepoint * Supp_Status, data = meta_Guatemala[meta_Guatemala$Timepoint == "12Weeks" | meta_Guatemala$Timepoint == "34Weeks",], main="Richness\nGuatemala", ylab="Chao1")
+boxplot(ShannonE_3700Seqs ~ Timepoint * Supp_Status, data = meta_Guatemala[meta_Guatemala$Timepoint == "12Weeks" | meta_Guatemala$Timepoint == "34Weeks",], main="Evenness\nGuatemala", ylab="H/Hmax")
+boxplot(ShannonH_3700Seqs ~ Timepoint * Supp_Status, data = meta_Guatemala[meta_Guatemala$Timepoint == "12Weeks" | meta_Guatemala$Timepoint == "34Weeks",], main="Diversity\nGuatemala", ylab="H")
 
-alltaxa$meta$Supp_Status <- 0
+counts <- as.data.frame(alltaxa$cts)
+counts$Lib <- rownames(counts)
 
-for (i in 1:length(alltaxa$meta$Lib)) {
-  if (alltaxa$meta$Timepoint[i] == "12Weeks" & alltaxa$meta$Arm[i] == 1) {
-    alltaxa$meta$Supp_Status[i] <- 1
-  }
-  if (alltaxa$meta$Timepoint[i] == "34Weeks" & alltaxa$meta$Arm[i] != 3) {
-    alltaxa$meta$Supp_Status[i] <- 1
-  }
-}
-df <- alltaxa$meta[alltaxa$meta$Mother_Infant == "Mother",]
+df <- merge(meta_Guatemala, counts, by = "Lib")
 df2 <- df[df$Timepoint == "12Weeks" | df$Timepoint == "34Weeks",]
-df2$Timepoint
+cts <- df2[,22:231]
 
-#*******************  OTU summary visualization
-par(mfrow=c(1,1))
-sort_alltax = otu.sort_otus(alltaxa, method = "alpha_asc")
-sort_phy = otu.sort_otus(phylum, method = "alpha_asc")
-
-#Plot barcharts
-# alltaxa in alphabetical order by phylum
-otu.plot_ra_bar(sort_alltax, factor = SiteLocation, ra_cutoff = 1.0, main="OTU Relative Abundance: SiteLocation", horiz=FALSE)
-# alltaxa sorted by relative abundance
-otu.plot_ra_bar(alltaxa, factor = SiteLocation, ra_cutoff = 1.0, main="OTU Relative Abundance: SiteLocation", horiz=FALSE)
-
-# plot only Batch == WFSTL1
-otu.plot_ra_bar(sort_alltax, factor = SiteLocation, mask = (Batch == "WFSTL1"), ra_cutoff = 1.0, main="OTU Relative Abundance: SiteLocation", horiz=FALSE)
-
-# plot heatmap NICK NOTE: Not sure how to interpret this type of plot. Title name is off?
-otu.plot_ra_heatmap(order, factor = SiteLocation, ra_cutoff = 1.0)
-otu.plot_ra_heatmap(phylum, factor = as.factor(paste(SiteLocation,Batch, sep="-")), ra_cutoff = 1.0)
-
-
+df2 <- merge(df2, details, by.x = "SubjectID", by.y = "Subject.ID")
+dim(df2)
 #******************* Beta-diversity tests:  Adonis ***************************
 perm = 1000
-adonis(alltaxa$cts ~ SiteLocation, permutations = perm, method = "bray")
-adonis(alltaxa$cts ~ Batch, permutations = perm, method = "bray")
-adonis(alltaxa$cts ~ SiteLocation * Batch, permutations = perm, method = "bray")
-#Batch seems to matter, but batches were not balanced with respect to
+adonis(cts ~ Timepoint*Supp_Status, data = df2, permutations = perm, method = "bray", strata = df2$SubjectID)
+adonis(cts ~ Timepoint + Supp_Status, data = df2, permutations = perm, method = "bray", strata = df2$SubjectID)
+
+#Time point seems to matter here, but not supplement status or the interaction of supplement and time,
 #mother, infant, or country.  So, is batch confounded??? NICK NOTE: Talk with Audrey
 
 perm = 1000
