@@ -226,8 +226,8 @@ otu.plot_ra_heatmap(phylum, factor = as.factor(paste(SiteLocation,Batch, sep="-"
 
 #******************* Beta-diversity tests:  Adonis ***************************
 perm = 1000
-adonis(alltaxa$cts ~ Timepoint, permutations = perm, method = "bray", strata = SubjectID)
-adonis(alltaxa$cts ~ Batch, permutations = perm, method = "bray", strata = Timepoint)
+adonis(alltaxa$cts ~ SiteLocation, permutations = perm, method = "bray")
+adonis(alltaxa$cts ~ Batch, permutations = perm, method = "bray")
 adonis(alltaxa$cts ~ SiteLocation * Batch, permutations = perm, method = "bray")
 #Batch seems to matter, but batches were not balanced with respect to
 #mother, infant, or country.  So, is batch confounded??? NICK NOTE: Talk with Audrey
