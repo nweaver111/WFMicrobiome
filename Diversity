@@ -1,0 +1,298 @@
+library("vegan")
+library("cluster")
+library("gplots")
+library ("ggplot2")
+library(RColorBrewer)
+
+#Load my own scripts:  adjust to your directory of choice
+source('dnf_transforms.R')
+source('dnf_matrix_corr.R')
+source('dnf_misc.R')
+source('dnf_multiple_tests.R')
+
+#Adjust to your working directory if needed.
+
+#Import metadata file into R
+meta_master     = read.metatable("WFSTL_metadata_21Aug2019.txt",order=TRUE, lib.nms = "Lib")
+#Import OTU sequence count files at different phylogenetic levels.
+#Each call returns a list object containing count data, as well as transformed count data (relative abundance, binary,
+#center-log ratio), shortened taxonomic names, etc.  The function calls below then extract the appropriately 
+#transformed data to perform a given analysis, buffering the user from having to decide which dataset to use.
+#The metadata imported above is passed into this function so each object stores all the metadata.  Subsequent
+#calls to subset the data (i.e., choose a subset of subjects to analyze) work under the hood on both OTU data 
+#and metadata
+alltaxa_master  = read.otutable("WFSTL_alltaxa_cts_21Aug2019.txt",order = TRUE, rm.prev = FALSE, explicet=TRUE, otu.nms = "OTU_Name", transform = TRUE, meta = meta_master, drop.zeros = TRUE)
+family_master  = read.otutable("WFSTL_family_cts_21Aug2019.txt",order = TRUE, rm.prev = FALSE, explicet=TRUE, otu.nms = "OTU_Name", transform = TRUE, meta = meta_master, drop.zeros = TRUE)
+order_master   = read.otutable("WFSTL_order_cts_21Aug2019.txt",order = TRUE, rm.prev = FALSE, explicet=TRUE, otu.nms = "OTU_Name", transform = TRUE, meta = meta_master, drop.zeros = TRUE)
+phylum_master   = read.otutable("WFSTL_phylum_cts_21Aug2019.txt",order = TRUE, rm.prev = FALSE, explicet=TRUE, otu.nms = "OTU_Name", transform = TRUE, meta = meta_master, drop.zeros = TRUE)
+
+#Filter OTU files
+# Require that an OTU be present in >5% of samples and that at least one sample have a %relative abundance >0.1% (remove rare taxa)
+# We also remove any sequences with taxonomy line = "/Unclassified" or "/Bacteria".  These may not be 16S sequences)
+alltaxa = otu.filter_otus(alltaxa_master, prevcut=5, racut=0.1, unc = TRUE, bact = TRUE)
+family = otu.filter_otus(family_master, prevcut=5, racut=0.1, unc = TRUE, bact = TRUE)
+order = otu.filter_otus(order_master, prevcut=5, racut=0.1, unc = TRUE, bact = TRUE)
+phylum = otu.filter_otus(phylum_master, prevcut=5, racut=0.1, unc = TRUE, bact = TRUE)
+
+#NICK NOTE: I am getting a warning for the previous four lines of code: the condition has length > 1 and only the first element will be used. Is this a problem? There is a lot of code to work through to figure out what might be wrong here, if anything...
+
+#Sort OTUs by descending relative abundance (the OTU files I sent you may already be in this order)
+alltaxa = otu.sort_otus(alltaxa, method = "ra_desc")
+family = otu.sort_otus(family, method = "ra_desc")
+order = otu.sort_otus(order, method = "ra_desc")
+phylum = otu.sort_otus(phylum, method = "ra_desc")
+
+#This saves key strokes, but need to be careful...
+attach(alltaxa$meta)
+
+#********************* Utilities *******************
+otu.summary(alltaxa) # description of alltaxa object
+otu.notu(alltaxa)    # number of OTUs in object
+otu.nsubj(alltaxa)   # number of subjects/libraries in object
+otu.dim(alltaxa)     # number of OTUs and subjects/libraries in object
+otu.subj_names(alltaxa) # return vector of subject/library names
+
+otu.plot_counts(alltaxa) # histogram of read counts for all libraries
+otu.plot_counts(alltaxa, mask = (SiteLocation == "India")) # histogram of read counts for India mice only
+
+otu.summarize_read_cts(alltaxa)  # Descriptive stats of read counts across all subjects/libraries
+otu.summarize_read_cts(alltaxa, factor = SiteLocation) # Descriptive stats of read counts by SiteLocation
+otu.summarize_read_cts(alltaxa, factor = as.factor(paste(SiteLocation,Batch, sep="-"))) # Descriptive stats of read counts by SiteLocation x Batch
+
+otu.summarize_read_cts(alltaxa, factor = as.factor(paste(SiteLocation,Batch, sep="-")), boxplot = TRUE) # Descriptive stats of read counts by SiteLocation x Batch
+otu.summarize_read_cts(alltaxa, factor = as.factor(paste(SiteLocation,Batch, sep="-")), boxplot = TRUE, logtrans = TRUE) # Descriptive stats of read counts by SiteLocation x Batch
+
+#NICK NOTE: The above two lines threw warning messages about parameters that can not be set. Need to look into these further.
+
+otu.avg_ra(alltaxa)  # return mean relative abundances of taxa
+otu.avg_ra(phylum)
+
+alltaxa$nms   # OTU names
+alltaxa$phynms  # Phylum names
+alltaxa$orignms # Full taxonomy name
+
+# Create object just with India's. All underlying data are subsetted
+# By default, any OTUs with zero sequences in resulting object are shifted to "Other" category.
+alltaxa_India = otu.subset_libs(alltaxa, mask = (SiteLocation == "India"))  
+otu.summary(alltaxa_India)
+alltaxa_India$meta  # access to metadata for HUU
+meta_India = alltaxa_India$meta #creating new variable may be more convenient
+
+# Subset OTU table to INCLUDE only taxa belonging to Firmicutes (all other taxa go into "Other" bin)
+alltaxa_firmicutes = otu.include_otunames(alltaxa, c("Firmicutes"))
+otu.summary(alltaxa_firmicutes)
+alltaxa_firmicutes$orignms
+
+#NICK NOTE: Not sure why we focus on Firmicutes; is it just an example or necessary?
+
+# Subset OTU table to EXCLUDE Firmicutes (all other taxa go into "Other" bin)
+alltaxa_no_firmicutes = otu.exclude_otunames(alltaxa, c("Firmicutes"))
+otu.summary(alltaxa_no_firmicutes)
+alltaxa_no_firmicutes$orignms
+
+#********************* biodiversity *******************
+
+#Check Goods coverage index:  all are above 0.99, so great depth of sequencing coverage
+min(Goods_3700Seqs, na.rm = TRUE)
+
+#Test for differences in common alpha diversity indices
+summary(aov(Sobs_3700Seqs ~ SiteLocation)) #Looks significant!
+summary(aov(Chao1_3700Seqs ~ SiteLocation)) #Looks significnat!
+summary(aov(ShannonE_3700Seqs ~ SiteLocation)) #not significant
+summary(aov(ShannonH_3700Seqs ~ SiteLocation)) #not significant
+
+summary(aov(Sobs_3700Seqs ~ SiteLocation * Mother_Infant)) #all significant again
+summary(aov(Chao1_3700Seqs ~ SiteLocation * Mother_Infant)) #all significant again
+summary(aov(ShannonE_3700Seqs ~ SiteLocation * Mother_Infant)) #interaction significant
+summary(aov(ShannonH_3700Seqs ~ SiteLocation * Mother_Infant)) #interaction significant
+
+#Plot indices: nice way to understand ANOVAS from above
+par(mfrow=c(3,3))
+ggplot(df2[df2$SiteLocation == "Guatemala",],aes(x=as.factor(Timepoint),y=Chao1_3700Seqs)) + 
+  geom_boxplot(aes(fill = as.factor(Supp_Status))) +  
+  geom_point(aes(fill = as.factor(Supp_Status)),position = position_jitterdodge()) +  
+  labs(title="Richness\nGuatemala",y= "Chao1") + 
+  scale_fill_manual(values = c("white", "skyblue"),name = "", labels = c("- LNS", "+ LNS")) + 
+  theme(axis.text.x = element_text(hjust = 1))+ 
+  scale_x_discrete("Time", labels = c("12Weeks" = "12 Weeks","34Weeks" = "34 Weeks")) 
+
+ggplot(df2[df2$SiteLocation == "Pakistan",],aes(x=as.factor(Timepoint),y=Chao1_3700Seqs)) + 
+  geom_boxplot(aes(fill = as.factor(Supp_Status))) +  
+  geom_point(aes(fill = as.factor(Supp_Status)),position = position_jitterdodge()) +  
+  labs(title="Richness\nPakistan",y= "Chao1") + 
+  scale_fill_manual(values = c("white", "skyblue"),name = "", labels = c("- LNS", "+ LNS")) + 
+  theme(axis.text.x = element_text(hjust = 1))+ 
+  scale_x_discrete("Time", labels = c("12Weeks" = "12 Weeks","34Weeks" = "34 Weeks")) 
+
+ggplot(df2[df2$SiteLocation == "DRC",],aes(x=as.factor(Timepoint),y=Chao1_3700Seqs)) + 
+  geom_boxplot(aes(fill = as.factor(Supp_Status))) +  
+  geom_point(aes(fill = as.factor(Supp_Status)),position = position_jitterdodge()) +  
+  labs(title="Richness\nDRC",y= "Chao1") + 
+  scale_fill_manual(values = c("white", "skyblue"),name = "", labels = c("- LNS", "+ LNS")) + 
+  theme(axis.text.x = element_text(hjust = 1))+ 
+  scale_x_discrete("Time", labels = c("12Weeks" = "12 Weeks","34Weeks" = "34 Weeks")) 
+
+ggplot(df2[df2$SiteLocation == "Guatemala",],aes(x=as.factor(Timepoint),y=ShannonE_3700Seqs)) + 
+  geom_boxplot(aes(fill = as.factor(Supp_Status))) +  
+  geom_point(aes(fill = as.factor(Supp_Status)),position = position_jitterdodge()) +  
+  labs(title="Evenness\nGuatemala",y= "H/Hmax") + 
+  scale_fill_manual(values = c("white", "skyblue"),name = "", labels = c("- LNS", "+ LNS")) + 
+  theme(axis.text.x = element_text(hjust = 1))+ 
+  scale_x_discrete("Time", labels = c("12Weeks" = "12 Weeks","34Weeks" = "34 Weeks")) 
+
+ggplot(df2[df2$SiteLocation == "Pakistan",],aes(x=as.factor(Timepoint),y=ShannonE_3700Seqs)) + 
+  geom_boxplot(aes(fill = as.factor(Supp_Status))) +  
+  geom_point(aes(fill = as.factor(Supp_Status)),position = position_jitterdodge()) +  
+  labs(title="Evenness\nPakistan",y= "H/Hmax") + 
+  scale_fill_manual(values = c("white", "skyblue"),name = "", labels = c("- LNS", "+ LNS")) + 
+  theme(axis.text.x = element_text(hjust = 1))+ 
+  scale_x_discrete("Time", labels = c("12Weeks" = "12 Weeks","34Weeks" = "34 Weeks")) 
+
+ggplot(df2[df2$SiteLocation == "DRC",],aes(x=as.factor(Timepoint),y=ShannonE_3700Seqs)) + 
+  geom_boxplot(aes(fill = as.factor(Supp_Status))) +  
+  geom_point(aes(fill = as.factor(Supp_Status)),position = position_jitterdodge()) +  
+  labs(title="Evenness\nDRC",y= "H/Hmax") + 
+  scale_fill_manual(values = c("white", "skyblue"),name = "", labels = c("- LNS", "+ LNS")) + 
+  theme(axis.text.x = element_text(hjust = 1))+ 
+  scale_x_discrete("Time", labels = c("12Weeks" = "12 Weeks","34Weeks" = "34 Weeks")) 
+
+ggplot(df2[df2$SiteLocation == "Guatemala",],aes(x=as.factor(Timepoint),y=ShannonH_3700Seqs)) + 
+  geom_boxplot(aes(fill = as.factor(Supp_Status))) +  
+  geom_point(aes(fill = as.factor(Supp_Status)),position = position_jitterdodge()) +  
+  labs(title="Diversity\nGuatemala",y= "H") + 
+  scale_fill_manual(values = c("white", "skyblue"),name = "", labels = c("- LNS", "+ LNS")) + 
+  theme(axis.text.x = element_text(hjust = 1))+ 
+  scale_x_discrete("Time", labels = c("12Weeks" = "12 Weeks","34Weeks" = "34 Weeks")) 
+
+ggplot(df2[df2$SiteLocation == "Pakistan",],aes(x=as.factor(Timepoint),y=ShannonH_3700Seqs)) + 
+  geom_boxplot(aes(fill = as.factor(Supp_Status))) +  
+  geom_point(aes(fill = as.factor(Supp_Status)),position = position_jitterdodge()) +  
+  labs(title="Diversity\nPakistan",y= "H") + 
+  scale_fill_manual(values = c("white", "skyblue"),name = "", labels = c("- LNS", "+ LNS")) + 
+  theme(axis.text.x = element_text(hjust = 1))+ 
+  scale_x_discrete("Time", labels = c("12Weeks" = "12 Weeks","34Weeks" = "34 Weeks")) 
+
+ggplot(df2[df2$SiteLocation == "DRC",],aes(x=as.factor(Timepoint),y=ShannonH_3700Seqs)) + 
+  geom_boxplot(aes(fill = as.factor(Supp_Status))) +  
+  geom_point(aes(fill = as.factor(Supp_Status)),position = position_jitterdodge()) +  
+  labs(title="Diversity\nDRC",y= "H") + 
+  scale_fill_manual(values = c("white", "skyblue"),name = "", labels = c("- LNS", "+ LNS")) + 
+  theme(axis.text.x = element_text(hjust = 1))+ 
+  scale_x_discrete("Time", labels = c("12Weeks" = "12 Weeks","34Weeks" = "34 Weeks")) 
+
+#Old boring plots:
+boxplot(Chao1_3700Seqs ~ Timepoint, data = df2[df2$SiteLocation == "Guatemala",], main="Richness\nGuatemala", ylab="Chao1")
+boxplot(Chao1_3700Seqs ~ Timepoint * Supp_Status, data = df2[df2$SiteLocation == "Pakistan",], main="Richness\nPakistan", ylab="Chao1")
+boxplot(Chao1_3700Seqs ~ Timepoint * Supp_Status, data = df2[df2$SiteLocation == "DRC",], main="Richness\nDRC", ylab="Chao1")
+boxplot(ShannonE_3700Seqs ~ Timepoint * Supp_Status, data = df2[df2$SiteLocation == "Guatemala", ], main="Evenness\nGuatemala", ylab="H/Hmax")
+boxplot(ShannonE_3700Seqs ~ Timepoint * Supp_Status, data = df2[df2$SiteLocation == "Pakistan", ], main="Evenness\nPakistan", ylab="H/Hmax")
+boxplot(ShannonE_3700Seqs ~ Timepoint * Supp_Status, data = df2[df2$SiteLocation == "DRC", ], main="Evenness\nDRC", ylab="H/Hmax")
+boxplot(ShannonH_3700Seqs ~ Timepoint * Supp_Status, data = df2[df2$SiteLocation == "Guatemala",], main="Diversity\nGuatemala", ylab="H")
+boxplot(ShannonH_3700Seqs ~ Timepoint * Supp_Status, data = df2[df2$SiteLocation == "Pakistan",], main="Diversity\nPakistan", ylab="H")
+boxplot(ShannonH_3700Seqs ~ Timepoint * Supp_Status, data = df2[df2$SiteLocation == "DRC",], main="Diversity\nDRC", ylab="H")
+
+alltaxa$meta$Supp_Status <- 0
+
+for (i in 1:length(alltaxa$meta$Lib)) {
+  if (alltaxa$meta$Timepoint[i] == "12Weeks" & alltaxa$meta$Arm[i] == 1) {
+    alltaxa$meta$Supp_Status[i] <- 1
+  }
+  if (alltaxa$meta$Timepoint[i] == "34Weeks" & alltaxa$meta$Arm[i] != 3) {
+    alltaxa$meta$Supp_Status[i] <- 1
+  }
+}
+df <- alltaxa$meta[alltaxa$meta$Mother_Infant == "Mother",]
+df2 <- df[df$Timepoint == "12Weeks" | df$Timepoint == "34Weeks",]
+df2$Timepoint
+
+#*******************  OTU summary visualization
+par(mfrow=c(1,1))
+sort_alltax = otu.sort_otus(alltaxa, method = "alpha_asc")
+sort_phy = otu.sort_otus(phylum, method = "alpha_asc")
+
+#Plot barcharts
+# alltaxa in alphabetical order by phylum
+otu.plot_ra_bar(sort_alltax, factor = SiteLocation, ra_cutoff = 1.0, main="OTU Relative Abundance: SiteLocation", horiz=FALSE)
+# alltaxa sorted by relative abundance
+otu.plot_ra_bar(alltaxa, factor = SiteLocation, ra_cutoff = 1.0, main="OTU Relative Abundance: SiteLocation", horiz=FALSE)
+
+# plot only Batch == WFSTL1
+otu.plot_ra_bar(sort_alltax, factor = SiteLocation, mask = (Batch == "WFSTL1"), ra_cutoff = 1.0, main="OTU Relative Abundance: SiteLocation", horiz=FALSE)
+
+# plot heatmap NICK NOTE: Not sure how to interpret this type of plot. Title name is off?
+otu.plot_ra_heatmap(order, factor = SiteLocation, ra_cutoff = 1.0)
+otu.plot_ra_heatmap(phylum, factor = as.factor(paste(SiteLocation,Batch, sep="-")), ra_cutoff = 1.0)
+
+
+#******************* Beta-diversity tests:  Adonis ***************************
+perm = 1000
+adonis(alltaxa$cts ~ Timepoint, permutations = perm, method = "bray", strata = SubjectID)
+adonis(alltaxa$cts ~ Batch, permutations = perm, method = "bray", strata = Timepoint)
+adonis(alltaxa$cts ~ SiteLocation * Batch, permutations = perm, method = "bray")
+#Batch seems to matter, but batches were not balanced with respect to
+#mother, infant, or country.  So, is batch confounded??? NICK NOTE: Talk with Audrey
+
+perm = 1000
+# Pairwise tests for all 8 groups defined by SiteLocation x Mother_Infant NICK NOTE: Does not account for Batch!
+otu.mul_adonis(alltaxa, as.factor(paste(SiteLocation,Mother_Infant, sep="-")), permutations = perm, method = "bray")
+
+#******************* Tests of individual taxa ***************************
+pdfy = 3.5
+pdfx = 5
+lwd=3.5
+plot = "p" # set plot = "fdr" to plot fdr corrected p-values
+
+# Perform non-parametric Kruskal-Wallis tests of relative abundance data.  Test for SiteLocation differences in all animals and just males
+a = otu.test_ra(alltaxa, SiteLocation, main="AllTaxa: SiteLocation", filen="RockyMtn_AllTaxa_SiteLocation.pdf", plot=plot, drop.zeros=FALSE, pdfy = pdfy , pdfx = pdfx)
+b = otu.test_ra(alltaxa, SiteLocation, mask = (Mother_Infant == "Mother"), main="AllTaxa: SiteLocation (Mothers)", filen="RockyMtn_AllTaxa_SiteLocation_Mothers.pdf", plot=plot, drop.zeros=FALSE, pdfy = pdfy , pdfx = pdfx)
+# Functions return tables that list OTU names, pvalues, fdr values, and for 2-group comparisons median values for both groups
+#NICK NOTE: both lines above fail to run due to an issue with parameter "pin", I have not clue what this is and will need to ask Dan.
+# Write out results tables
+write.table(a, file="RockyMtn_P_AllTaxa_SiteLocation.txt", sep='\t')
+write.table(b, file="RockyMtn_P_AllTaxa_SiteLocation_Mothers.txt", sep='\t')
+
+# Perform parametric linear modeling of CLR-transformed data.  
+# This is a work in progress that currently allows adding 1 covariate to basic formula:  alltaxa$clr ~ predictor + factor
+# Perform parametric tests of CLR-transformed relative abundance data.  Test for differences in SiteLocation, alone and adjusting for Mother_Infant (not that this is really relevant)
+c = otu.test_ra_lm(alltaxa, SiteLocation, main="AllTaxa: SiteLocation", filen="RockyMtn_AllTaxa_Batch_LM.pdf", plot=plot, drop.zeros=FALSE, pdfy = pdfy , pdfx = pdfx)
+d = otu.test_ra_lm(alltaxa, SiteLocation, factor = Mother_Infant, main="AllTaxa: SiteLocation (adjust for Mother_Infant)", filen="RockyMtn_AllTaxa_SiteLocation-MotherInfant_LM.pdf", plot=plot, drop.zeros=FALSE, pdfy = pdfy , pdfx = pdfx)
+# Functions return tables that list OTU names, pvalues, fdr values, and for 2-group comparisons median values for both groups
+#NICK NOTE: Same issue as above!!!!!!
+# Write out results tables
+write.table(c, file="RockyMtn_P_AllTaxa_SiteLocation_LM.txt", sep='\t')
+write.table(d, file="RockyMtn_P_AllTaxa_SiteLocation-MotherInfant_LM.txt", sep='\t')
+
+
+#******************* PCA ****************************
+#Pre-compute PCA and PCoA objects
+alltaxa_pc = otu.mul_princo(alltaxa)
+family_pc = otu.mul_princo(family)
+order_pc = otu.mul_princo(order)
+phylum_pc = otu.mul_princo(phylum)
+
+# Plot PCA/PCoA for alltaxa, coloring by SiteLocation, pc1 and pc2 specify axes to display
+otu.mul_plot_princo(alltaxa_pc, aes=SiteLocation, pc1 = 1, pc2 = 2, lgd.title="SiteLocation", filen = "SiteLocation_Pc1_Pc2.pdf")
+otu.mul_plot_princo(alltaxa_pc, aes=SiteLocation, pc1 = 1, pc2 = 3, lgd.title="SiteLocation", filen = "SiteLocation_Pc1_Pc3.pdf")
+otu.mul_plot_princo(alltaxa_pc, aes=SiteLocation, pc1 = 2, pc2 = 3, lgd.title="SiteLocation", filen = "SiteLocation_Pc2_Pc3.pdf")
+otu.mul_plot_princo(alltaxa_pc, aes=SiteLocation, pc1 = 1, pc2 = 4, lgd.title="SiteLocation", filen = "SiteLocation_Pc1_Pc4.pdf")
+otu.mul_plot_princo(alltaxa_pc, aes=SiteLocation, pc1 = 2, pc2 = 4, lgd.title="SiteLocation")
+otu.mul_plot_princo(alltaxa_pc, aes=SiteLocation, pc1 = 3, pc2 = 4, lgd.title="SiteLocation")
+otu.mul_plot_princo(alltaxa_pc, aes=SiteLocation, pc1 = 4, pc2 = 7, lgd.title="SiteLocation")
+#NICK NOTE: otu.mul_plot_princo function does not work.
+#Test whether Bray-Curtis PCoA scores are associated with anything (Can do for other 3 beta-diversity indices)
+bc = alltaxa_pc$bc
+bcpts = bc$points
+summary(aov(bcpts[,1] ~ SiteLocation * Mother_Infant))
+summary(aov(bcpts[,2] ~ SiteLocation * Mother_Infant))
+summary(aov(bcpts[,3] ~ SiteLocation * Mother_Infant))
+summary(aov(bcpts[,4] ~ SiteLocation * Mother_Infant))
+summary(aov(bcpts[,5] ~ SiteLocation * Mother_Infant))
+summary(aov(bcpts[,6] ~ SiteLocation * Mother_Infant))
+
+#******************* Correlation heatmaps ****************************
+#Plot pairwise correlations for pairs of OTUs (not the best way to do this -- there are other, better ways)
+# I mainly use this to correlate OTUs with other data collected on subjects
+t = matrix_corr(alltaxa$clr[,1:25], alltaxa$clr[,1:25], method = "pearson", heatmap = "TRUE", cluster = "both", diag = "FALSE")
+t = matrix_corr(phylum$clr, phylum$clr, method = "pearson", heatmap = "TRUE", cluster = "both", diag = "FALSE")
+
+
