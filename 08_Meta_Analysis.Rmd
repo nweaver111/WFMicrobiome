@@ -1,0 +1,231 @@
+---
+title: "Meta Analysis Microbiome"
+author: "Audrey Hendricks"
+date: "4/11/2022"
+output:
+  html_document:
+    toc: yes
+    toc_depth: '3'
+    df_print: paged
+  html_notebook:
+    toc: yes
+    toc_depth: '3'
+    code_folding: hide
+    toc_float: yes
+---
+
+Look up meta and metafor packages for meta-analysis
+See website here for guidance on packages for meta analysis: https://bookdown.org/MathiasHarrer/Doing_Meta_Analysis_in_R/
+
+
+# data prep
+#### libraries
+```{r, message=FALSE, results=TRUE, warning=FALSE}
+## need to install here library if not installed yet. Use following command without ##
+##install.packages("here")
+##install.packages("ggplot2")
+library(ggplot2)
+library(here)
+library(emmeans)
+library(DT)
+library(scales)
+library(RColorBrewer)
+library(gmodels)
+library(devtools)
+##devtools::install_github("MathiasHarrer/dmetar")
+##library(dmetar)
+library(meta)
+library(metafor)
+here()
+```
+
+
+### reading in data
+```{r, message=FALSE, results=TRUE, warning=FALSE}
+mb<-read.csv(here("Results", "OTU", "All_Results_Wide.csv"), header = T)
+dim(mb)
+
+mb[1:5,]
+```
+
+
+# meta analysis
+## OTUs
+```{r, message=FALSE, results=TRUE, warning=FALSE}
+tmp2<-c()
+for(i in 1:nrow(mb)){
+tmp<-metagen(TE=t(mb[i,c("Mean_Estimate_DRC_Time", "Mean_Estimate_Guatemala_Time", "Mean_Estimate_India_Time", "Mean_Estimate_Pakistan_Time")]), seTE=t(mb[i,c("Error_Estimate_DRC_Time", "Error_Estimate_Guatemala_Time", "Error_Estimate_India_Time", "Error_Estimate_Pakistan_Time")]), comb.fixed = FALSE,comb.random = TRUE,sm = "MD", method.tau = "SJ", hakn = TRUE)
+
+
+lower=t(tmp$lower); colnames(lower)<-paste("lower", colnames(lower), sep=".")
+upper=t(tmp$upper); colnames(upper)<-paste("upper", colnames(upper), sep=".")
+pval=t(tmp$pval); colnames(pval)<-paste("pval", colnames(pval), sep=".")
+
+tmp2<-rbind(tmp2,data.frame(mb[i,1], "Time",meta.effect=round(tmp$TE.random,2), meta.se=round(tmp$seTE.random,2), meta.lowerCI=round(tmp$lower.random,2), meta.upperCI=round(tmp$upper.random,2), meta.p=format(tmp$pval.random,scientific=T, digits=3), meta.fdr=format(p.adjust(tmp$pval.random, method = "fdr", n = 158),scientific=T, digits=3), round(t(tmp$TE),2), round(t(tmp$seTE),2), round(lower,2), round(upper,2), format(pval,scientific=T, digits=3), I2=round(tmp$I2,2), lower.I2=round(tmp$lower.I2,2), upper.I2=round(tmp$upper.I2,2), het.p=round(tmp$pval.Q),2))
+
+
+png(file=here("Plots", "Meta_Analysis","Individual_OTUs",paste("Forest", paste(mb[i,1], "Time", collapse="."),"png",sep=".")), width=10, height=7,units="in", res=200);forest(tmp, layout="JAMA", label.left=mb[i,1], label.right="Time", studlab=c("DRC", "Guatemala", "India", "Pakistan")); dev.off() 
+}
+
+datatable(tmp2, rownames=F, extensions = 'Buttons', 
+    options = list(dom = 'Bfrtip', 
+                   buttons = c('excel', "csv")))
+
+```
+
+## Alpha Diversity
+TO DO
+- loop through interaction and non-interaction datasets across all 4 diversity measures?
+
+### time*supplement interaction
+#### reading in data
+```{r, message=FALSE, results=TRUE, warning=FALSE}
+mb.out<-c()
+site.names<-c("DRC", "Guatemala", "Pakistan")
+
+mb.out<-read.csv(here("Results","Alpha", "All_Alpha_Models_Updated.csv"), header = T)[,-1]
+mb.out <- mb.out[mb.out$Site %in% site.names,]
+dim(mb.out)
+
+datatable(mb.out, rownames=F, extensions = 'Buttons', 
+    options = list(dom = 'Bfrtip', 
+                   buttons = c('excel', "csv")))
+```
+
+
+```{r, message=FALSE, results=TRUE, warning=FALSE}
+tmp2<-c()
+for(outcome in c("Sobs_3700Seqs", "Chao1_3700Seqs", "ShannonE_3700Seqs", "ShannonH_3700Seqs")){
+tmp<-metagen(TE=mb.out[mb.out$Index==outcome,"Interaction_Estimate"], seTE=mb.out[mb.out$Index==outcome,"Interaction_Standard_Error"], comb.fixed = FALSE,comb.random = TRUE,sm = "MD", method.tau = "SJ", hakn = TRUE)
+
+
+lower=t(tmp$lower); colnames(lower)<-paste("lower", site.names, sep=".")
+upper=t(tmp$upper); colnames(upper)<-paste("upper", site.names, sep=".")
+pval=t(tmp$pval); colnames(pval)<-paste("pval", site.names, sep=".")
+TE=t(tmp$TE); colnames(TE)<-paste("Estimate", site.names, sep=".")
+seTE=t(tmp$seTE); colnames(seTE)<-paste("SE", site.names, sep=".")
+
+tmp2<-rbind(tmp2,data.frame(outcome,meta.effect=round(tmp$TE.random,2), meta.se=round(tmp$seTE.random,2), meta.lowerCI=round(tmp$lower.random,2), meta.upperCI=round(tmp$upper.random,2), meta.p=format(tmp$pval.random,scientific=T, digits=3),meta.fdr=format(p.adjust(tmp$pval.random, method = "fdr", n = 4),scientific=T, digits=3), round(TE,2), round(seTE,2), round(lower,2), round(upper,2), format(pval,scientific=T, digits=3), I2=round(tmp$I2,2), lower.I2=round(tmp$lower.I2,2), upper.I2=round(tmp$upper.I2,2), het.p=round(tmp$pval.Q),2))
+
+
+png(file=here("Plots", "Meta_Analysis", "Alpha",paste("Forest_",outcome,"_interaction.png",sep="")), width=10, height=7,units="in", res=200);forest(tmp, layout="JAMA", label.left=outcome, label.right="time*sup", studlab=c("DRC", "Guatemala", "Pakistan")); dev.off() 
+}
+
+write.csv(tmp2, here("Results", "Alpha", "Meta_Interaction_Alpha_Results.csv"))
+
+datatable(tmp2, rownames=F, extensions = 'Buttons', 
+    options = list(dom = 'Bfrtip', 
+                   buttons = c('excel', "csv")))
+
+```
+
+### no interaction
+#### reading in data
+```{r, message=FALSE, results=TRUE, warning=FALSE}
+mb.out<-c()
+site.names<-c("DRC", "Guatemala", "India", "Pakistan")
+mb.out<-read.csv(here("Results","Alpha", "All_Alpha_Models_Updated.csv"), header = T)[,-1]
+dim(mb.out)
+
+datatable(mb.out, rownames=F, extensions = 'Buttons', 
+    options = list(dom = 'Bfrtip', 
+                   buttons = c('excel', "csv")))
+```
+
+#### Supplement
+```{r, message=FALSE, results=TRUE, warning=FALSE}
+tmp2<-c()
+for(outcome in c("Sobs_3700Seqs", "Chao1_3700Seqs", "ShannonE_3700Seqs", "ShannonH_3700Seqs")){
+tmp<-metagen(TE=mb.out[mb.out$Index==outcome,"Supplement_Estimate"], seTE=mb.out[mb.out$Index==outcome,"Supplement_Standard_Error"], comb.fixed = FALSE,comb.random = TRUE,sm = "MD", method.tau = "SJ", hakn = TRUE)
+
+
+lower=t(tmp$lower); colnames(lower)<-paste("lower", site.names, sep=".")
+upper=t(tmp$upper); colnames(upper)<-paste("upper", site.names, sep=".")
+pval=t(tmp$pval); colnames(pval)<-paste("pval", site.names, sep=".")
+TE=t(tmp$TE); colnames(TE)<-paste("Estimate", site.names, sep=".")
+seTE=t(tmp$seTE); colnames(seTE)<-paste("SE", site.names, sep=".")
+
+tmp2<-rbind(tmp2,data.frame(outcome,meta.effect=round(tmp$TE.random,2), meta.se=round(tmp$seTE.random,2), meta.lowerCI=round(tmp$lower.random,2), meta.upperCI=round(tmp$upper.random,2), meta.p=format(tmp$pval.random,scientific=T, digits=3),meta.fdr=format(p.adjust(tmp$pval.random, method = "fdr", n = 4),scientific=T, digits=3), round(TE,2), round(seTE,2), round(lower,2), round(upper,2), format(pval,scientific=T, digits=3), I2=round(tmp$I2,2), lower.I2=round(tmp$lower.I2,2), upper.I2=round(tmp$upper.I2,2), het.p=round(tmp$pval.Q),2))
+
+
+png(file=here("Plots", "Meta_Analysis", "Alpha",paste("Forest_",outcome,"_supplement.png",sep="")), width=10, height=7,units="in", res=200);forest(tmp, layout="JAMA", label.left=outcome, label.right="supplement", studlab=c("DRC", "Guatemala", "India", "Pakistan")); dev.off() 
+}
+
+write.csv(tmp2, here("Results", "Alpha", "Meta_Supplement_Alpha_Results.csv"))
+
+datatable(tmp2, rownames=F, extensions = 'Buttons', 
+    options = list(dom = 'Bfrtip', 
+                   buttons = c('excel', "csv")))
+
+```
+
+#### Time
+```{r, message=FALSE, results=TRUE, warning=FALSE}
+tmp2<-c()
+for(outcome in c("Sobs_3700Seqs", "Chao1_3700Seqs", "ShannonE_3700Seqs", "ShannonH_3700Seqs")){
+tmp<-metagen(TE=mb.out[mb.out$Index==outcome,"Time_Estimate"], seTE=mb.out[mb.out$Index==outcome,"Time_Standard_Error"], comb.fixed = FALSE,comb.random = TRUE,sm = "MD", method.tau = "SJ", hakn = TRUE)
+
+
+lower=t(tmp$lower); colnames(lower)<-paste("lower", site.names, sep=".")
+upper=t(tmp$upper); colnames(upper)<-paste("upper", site.names, sep=".")
+pval=t(tmp$pval); colnames(pval)<-paste("pval", site.names, sep=".")
+TE=t(tmp$TE); colnames(TE)<-paste("Estimate", site.names, sep=".")
+seTE=t(tmp$seTE); colnames(seTE)<-paste("SE", site.names, sep=".")
+
+tmp2<-rbind(tmp2,data.frame(outcome,meta.effect=round(tmp$TE.random,2), meta.se=round(tmp$seTE.random,2), meta.lowerCI=round(tmp$lower.random,2), meta.upperCI=round(tmp$upper.random,2), meta.p=format(tmp$pval.random,scientific=T, digits=3),meta.fdr=format(p.adjust(tmp$pval.random, method = "fdr", n = 4),scientific=T, digits=3), round(TE,2), round(seTE,2), round(lower,2), round(upper,2), format(pval,scientific=T, digits=3), I2=round(tmp$I2,2), lower.I2=round(tmp$lower.I2,2), upper.I2=round(tmp$upper.I2,2), het.p=round(tmp$pval.Q),2))
+
+
+png(file=here("Plots", "Meta_Analysis", "Alpha",paste("Forest_",outcome,"_time.png",sep="")), width=10, height=7,units="in", res=200);forest(tmp, layout="JAMA", label.left=outcome, label.right="time", studlab=c("DRC", "Guatemala", "India", "Pakistan")); dev.off() 
+}
+
+write.csv(tmp2, here("Results", "Alpha", "Meta_Time_Alpha_Results.csv"))
+
+datatable(tmp2, rownames=F, extensions = 'Buttons', 
+    options = list(dom = 'Bfrtip', 
+                   buttons = c('excel', "csv")))
+
+```
+
+## Beta Diversity
+### Interaction
+```{r, message=FALSE, results=TRUE, warning=FALSE}
+p.vals=c(0.452547453
+, 0.962037962
+, 0.918081918
+)
+probit<-pnorm(sum(qnorm(p.vals))/sqrt(3), lower.tail=T)
+probit
+
+
+fishers<- pchisq(sum(-2*log(p.vals)), df=2*3, lower.tail=F)
+fishers
+
+```
+
+### Time
+```{r, message=FALSE, results=TRUE, warning=FALSE}
+p.vals=c(0.000999, 0.000999, 0.000999, 0.033966034
+)
+probit<-pnorm(sum(qnorm(p.vals))/sqrt(4), lower.tail=T)
+probit
+
+
+fishers<- pchisq(sum(-2*log(p.vals)), df=2*4, lower.tail=F)
+fishers
+```
+
+### Supplement
+```{r, message=FALSE, results=TRUE, warning=FALSE}
+p.vals=c(0.002997003
+, 0.071928072
+, 0.392607393
+, 0.000999001
+)
+probit<-pnorm(sum(qnorm(p.vals))/sqrt(4), lower.tail=T)
+probit
+
+
+fishers<- pchisq(sum(-2*log(p.vals)), df=2*4, lower.tail=F)
+fishers
+```
+
